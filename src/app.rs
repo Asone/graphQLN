@@ -8,14 +8,14 @@ use crate::{
     guards::userguard::UserGuard,
     lnd::client::LndClient,
 };
+use juniper_rocket_multipart_handler::graphql_upload_wrapper::GraphQLUploadWrapper;
+use rocket::{ response::content, State };
+pub type Schema = RootNode<'static, Query, Mutation, EmptySubscription<GQLContext>>;
 
 use rocket::{
     form::{Form, Strict},
-    http::{Cookie, Status},
-    response::content::{self},
-    State,
+    http::{Cookie, Status}
 };
-pub type Schema = RootNode<'static, Query, Mutation, EmptySubscription<GQLContext>>;
 use crate::db::PostgresConn;
 use crate::guards::paymentrequestheader::PaymentRequestHeader;
 use juniper::{EmptySubscription, RootNode};
@@ -26,7 +26,6 @@ use rocket::http::CookieJar;
 pub fn graphiql() -> content::Html<String> {
     juniper_rocket::graphiql_source("/graphql", None)
 }
-
 /*
     This is a void handler that will return a 200 empty response
     for browsers that intends to check pre-flight for CORS rules.
@@ -53,6 +52,7 @@ pub async fn get_graphql_handler(
             &GQLContext {
                 pool: db,
                 lnd: lnd,
+                files: None,
                 user: user_guard.0,
             },
         )
@@ -76,6 +76,7 @@ pub async fn post_graphql_handler(
             &GQLContext {
                 pool: db,
                 lnd: lnd,
+                files: None,
                 user: user_guard.0,
             },
         )
@@ -121,8 +122,33 @@ pub async fn payable_post_graphql_handler(
             &GQLContext {
                 pool: db,
                 lnd: lnd,
+                files: None,
                 user: user_guard.0,
             },
         )
         .await
+}
+
+#[rocket::post("/upload", data = "<request>")]
+pub async fn upload<'r>(
+    request: GraphQLUploadWrapper,
+    schema: &State<Schema>,
+    db: PostgresConn,
+    user_guard: UserGuard,
+    lnd: LndClient,
+) -> GraphQLResponse {
+    let result = request
+        .operations
+        .execute(
+            &*schema,
+            &GQLContext {
+                pool: db,
+                lnd,
+                files: request.files,
+                user: user_guard.0
+            },
+        )
+        .await;
+
+    result
 }

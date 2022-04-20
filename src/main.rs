@@ -10,6 +10,8 @@ extern crate diesel;
 
 extern crate diesel_derive_enum;
 extern crate dotenv;
+extern crate juniper_rocket_multipart_handler;
+extern crate tokio_util;
 extern crate tonic;
 
 mod app;
@@ -24,13 +26,16 @@ mod lnd;
 
 use dotenv::dotenv;
 use juniper::EmptySubscription;
-use rocket::Rocket;
+use rocket::{
+    figment::Figment,
+    Rocket,
+};
 
 use crate::db::PostgresConn;
 use app::Schema;
 use app::{
     get_graphql_handler, graphiql, login, options_handler, payable_post_graphql_handler,
-    post_graphql_handler,
+    post_graphql_handler, upload
 };
 use catchers::payment_required::payment_required;
 use cors::Cors;
@@ -50,7 +55,10 @@ async fn main() {
     dotenv().ok();
     config::init();
 
+    let figment = Figment::from(rocket::Config::default());
+    // .merge(("limits", Limits::new().limit("json", 16.mebibytes())));
     Rocket::build()
+        // .configure(figment)
         .register("/", catchers![payment_required])
         .attach(PostgresConn::fairing())
         .manage(Schema::new(
@@ -66,6 +74,7 @@ async fn main() {
                 get_graphql_handler,
                 post_graphql_handler,
                 payable_post_graphql_handler,
+                upload,
                 login
             ],
         )
